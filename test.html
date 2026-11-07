@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ステージ長さ測定用</title>
+  <style>
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      text-align: center;
+      font-family: sans-serif;
+      margin: 0;
+      padding: 15px;
+      user-select: none;
+    }
+    canvas {
+      background-color: #5c94fc;
+      border: 4px solid #fff;
+      border-radius: 8px;
+      display: block;
+      margin: 10px auto;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.7);
+    }
+    .meter-panel {
+      background: #252525;
+      display: inline-block;
+      padding: 10px 25px;
+      border-radius: 8px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #4CAF50;
+      margin-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 10px;
+    }
+    .btn {
+      width: 70px;
+      height: 45px;
+      font-size: 18px;
+      font-weight: bold;
+      background-color: #333;
+      color: white;
+      border: 2px solid #555;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn:active { background-color: #666; }
+  </style>
+</head>
+<body>
+
+  <h1>ステージ長さ確認専用マップ</h1>
+
+  <div class="meter-panel">
+    現在地: <span id="dist-val" style="color: #FFEB3B;">0</span> m / 全長 60 m (6,000px)
+  </div>
+
+  <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+  <div class="controls">
+    <button class="btn" id="btn-left">◀ 左</button>
+    <button class="btn" id="btn-jump">▲ 跳</button>
+    <button class="btn" id="btn-right">右 ▶</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 全長 6,000px (100px = 1メートル換算で60m)
+    const STAGE_WIDTH = 6000;
+    let cameraX = 0;
+
+    const player = {
+      x: 30, y: 310, width: 28, height: 28,
+      vx: 0, vy: 0, speed: 6, jumpPower: -11, // ダッシュ用にスピードアップ
+      isGrounded: false
+    };
+
+    const gravity = 0.55;
+    const keys = { left: false, right: false, jump: false };
+
+    // 操作
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = true;
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = true;
+      if (['ArrowUp', ' ', 'w', 'W'].includes(e.key)) keys.jump = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = false;
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
+      if (['ArrowUp', ' ', 'w', 'W'].includes(e.key)) keys.jump = false;
+    });
+
+    const setupBtn = (id, key) => {
+      const b = document.getElementById(id);
+      b.addEventListener('mousedown', (e) => { e.preventDefault(); keys[key] = true; });
+      b.addEventListener('mouseup', (e) => { e.preventDefault(); keys[key] = false; });
+      b.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+      b.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+    };
+    setupBtn('btn-left', 'left'); setupBtn('btn-right', 'right'); setupBtn('btn-jump', 'jump');
+
+    function update() {
+      if (keys.left) player.vx = -player.speed;
+      else if (keys.right) player.vx = player.speed;
+      else player.vx = 0;
+
+      if (keys.jump && player.isGrounded) {
+        player.vy = player.jumpPower;
+        player.isGrounded = false;
+      }
+
+      player.vy += gravity;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      if (player.x < 0) player.x = 0;
+      if (player.x > STAGE_WIDTH - player.width) player.x = STAGE_WIDTH - player.width;
+
+      // 平らな一本道の床判定
+      if (player.y + player.height >= 340) {
+        player.y = 340 - player.height;
+        player.vy = 0;
+        player.isGrounded = true;
+      }
+
+      // 距離（メートル）計算
+      const meters = Math.floor(player.x / 100);
+      document.getElementById('dist-val').textContent = meters;
+
+      // カメラ移動
+      cameraX = player.x - canvas.width / 2 + player.width / 2;
+      if (cameraX < 0) cameraX = 0;
+      if (cameraX > STAGE_WIDTH - canvas.width) cameraX = STAGE_WIDTH - canvas.width;
+
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(-cameraX, 0);
+
+      // 1. 平らな一本道
+      ctx.fillStyle = '#795548';
+      ctx.fillRect(0, 340, STAGE_WIDTH, 60);
+      ctx.fillStyle = '#4CAF50';
+      ctx.fillRect(0, 340, STAGE_WIDTH, 8);
+
+      // 2. 100px (1m) ごとの距離目盛り線
+      for (let x = 0; x <= STAGE_WIDTH; x += 100) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.fillRect(x, 280, 2, 60);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText((x / 100) + 'm', x + 5, 295);
+      }
+
+      // 3. ゴール表示
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(STAGE_WIDTH - 20, 190, 10, 150);
+      ctx.fillStyle = '#4CAF50';
+      ctx.beginPath();
+      ctx.arc(STAGE_WIDTH - 15, 190, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. プレイヤー
+      ctx.fillStyle = '#FFEB3B';
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(player.x, player.y, player.width, player.height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(player.x + 5, player.y + 6, 4, 6);
+      ctx.fillRect(player.x + 18, player.y + 6, 4, 6);
+      ctx.fillRect(player.x + 9, player.y + 18, 10, 2);
+
+      ctx.restore();
+
+      // --- 画面上部に「全体ミニマップ」を描画 ---
+      const mapWidth = 560;
+      const mapHeight = 15;
+      const mapX = 20;
+      const mapY = 20;
+
+      // ミニマップ背景
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(mapX - 4, mapY - 4, mapWidth + 8, mapHeight + 8);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(mapX, mapY, mapWidth, mapHeight);
+
+      // ミニマップ上のプレイヤー位置
+      const playerMapX = mapX + (player.x / STAGE_WIDTH) * mapWidth;
+      ctx.fillStyle = '#FFEB3B';
+      ctx.fillRect(playerMapX - 3, mapY - 2, 6, mapHeight + 4);
+    }
+
+    update();
+  </script>
+
+</body>
+</html>
